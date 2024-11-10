@@ -53,7 +53,6 @@ import re
 dotenv.load_dotenv()
 
 class EmployeeChatBot:
-    # TODO: To be implemented
     def __init__(self):
         #loading variables:
         self.combined_text = ""
@@ -71,40 +70,52 @@ class EmployeeChatBot:
         self.llm = HuggingFaceEndpoint( repo_id=self.repo_id, temperature= 0.8, top_k= 50, huggingfacehub_api_token=os.getenv('HUGGINGFACE_API_KEY') ) #tunable
 
         #memory variables:
-        # self.memory_template = """You are a ambiguity clearer, your task is to examine the human question and check for any "he/she/it/they/them" ambiguities.
-        # return an updated human question fixing those ambiguities using the previous conversation context only.
-        # if there is not enought relevant context, RETURN HUMAN QUESTION AS IT IS
-        # YOUR ANSWER SHOULD BE A QUESTION WHICH ONLY CLARIFIES ANY AMBIGUITY IN human question by replacing it with their name
-        # RETURN IN FORMAT: New human question: (updated question)
-        # Previous conversation:
-        # {chat_history}
+        self.memory_template = """You are a ambiguity clearer, your task is to examine the human question and check for any "he/she/it/they/them" ambiguities.
+        return an updated human question fixing those ambiguities using the previous conversation context only.
+        if there is not enought relevant context, RETURN HUMAN QUESTION AS IT IS
+        YOUR ANSWER SHOULD BE A QUESTION WHICH ONLY CLARIFIES ANY AMBIGUITY IN human question by replacing it with their name
+        RETURN IN FORMAT: New human question: (updated question)
+        Previous conversation:
+        {chat_history}
 
-        # human question: {question}
-        # New human question:
-        # """
-        # self.memory_prompt = PromptTemplate.from_template(self.memory_template)
+        human question: {question}
+        New human question:
+        """
+        self.memory_prompt = PromptTemplate.from_template(self.memory_template)
 
-        # self.memory = ConversationBufferMemory(memory_key="chat_history")
-        # self.conversation = LLMChain(
-        #     llm=self.llm,
-        #     prompt=self.memory_prompt,
-        #     verbose=False, #okay.... so this setting tells everything going on in the computations and stuff
-        #     memory=self.memory
-        # )
+        self.memory = ConversationBufferMemory(memory_key="chat_history")
+        self.conversation = LLMChain(
+            llm=self.llm,
+            prompt=self.memory_prompt,
+            verbose=False, 
+            memory=self.memory
+        )
 
-        # #prompt variables
-        # self.Classifier_template = """
-        # You are a prompt classifier designed to classify questions from employees in an organization.
-        # classify the following question into "Relevant" or "Irrelevant", based on whether the query theme is of a question from an organization employee, the question could be about IT, HR, Finance or any other department
-        # Only answer from the specified classes and one word answers.
+        #prompt variables
+        self.Classifier_template = """
+        You are a prompt classifier designed to classify questions from employees in an organization.
+        classify the following question into "Relevant" or "Irrelevant", based on whether the query theme is of a question from an organization employee, the question could be about IT, HR, Finance or any other department
+        Only answer from the specified classes and one word answers.
 
-        # Question: {question}
-        # Answer:
-        # """
-        # self.Classifier_prompt = PromptTemplate( template=self.Classifier_template, input_variables=["question"] )
+        Question: {question}
+        Answer:
+        """
 
-        # #chain variables
-        # self.classifier_chain = ({"question": RunnablePassthrough()} | self.Classifier_prompt | self.llm  | StrOutputParser() )
+        self.Employee_Template = """ 
+          You are a chatbot designed to answer questions from Employees of an organization.
+          Use following extract from the relevant documents to answer the question.
+
+          Context: {context}
+          Question: {question}
+          Answer:
+        """
+        self.Classifier_prompt = PromptTemplate( template=self.Classifier_template, input_variables=["question"] )
+        self.Employee_prompt = PromptTemplate(template=self.Employee_Template, input_variables=["context", "question"] )
+
+        #chain variables
+        self.classifier_chain = ({"question": RunnablePassthrough()} | self.Classifier_prompt | self.llm  | StrOutputParser() )
+        self.Employee_chain = ({"context": self.retriever | self.format_docs,  "question": RunnablePassthrough()} | self.Employee_prompt | self.llm | StrOutputParser() )
+        self.full_chain = {"Relevancy": self.classifier_chain, "question": lambda x: x["question"]} | RunnableLambda(self.route)
 
 
     #this function will add the given filepath (as a string) to the pinecone vector db after parsing it
@@ -147,9 +158,10 @@ class EmployeeChatBot:
       vector_store.add_documents(documents=docs, ids=uuids)
 
 
-    # TODO: To be implemented
+    # TODO: Add memory and caching to this
     def generate(self, query):
-        return "THIS IS A BOT GENERATED RESPONSE"
+        query_response =  self.full_chain.invoke({"question": query})
+        return query_response
 
 
     #Helper functions:
@@ -158,7 +170,11 @@ class EmployeeChatBot:
 
 
     def route(self, info):
-        pass
+        if "relevant" in info["Relevancy"].lower():
+          print("Question was relevant")
+          return self.Employee_chain.invoke(info["question"])
+        else:
+          return "Your question was not relevant to our organization"
 
 # Initialize the EmployeeChatBot
 bot = EmployeeChatBot()
