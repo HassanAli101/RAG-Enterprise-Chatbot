@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#Env file generator:
+EnvFile.py
+
 # C extensions
 *.so
 
