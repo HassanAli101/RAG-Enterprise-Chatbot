@@ -224,4 +224,3 @@ if uploaded_file is not None:
     # Pass the temporary file path to AddFileToDB
     bot.AddFileToDB([temp_file_path])
     st.success(f"File '{uploaded_file.name}' has been added to the database.")
-
