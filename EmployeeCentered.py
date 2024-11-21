@@ -140,7 +140,7 @@ class EmployeeChatBot:
       text_splitter = TokenTextSplitter(chunk_size=self.CHUNK_SIZE, chunk_overlap=int(self.CHUNK_SIZE*self.CHUNK_OVERLAP))
       texts = text_splitter.split_text(combined_text)
       docs = text_splitter.create_documents(texts)
-      print(docs)
+      # print(docs)
       if self.index_name not in self.pc.list_indexes().names():
         self.pc.create_index(  #tunable
           name=self.index_name,
@@ -179,48 +179,55 @@ class EmployeeChatBot:
 # Initialize the EmployeeChatBot
 bot = EmployeeChatBot()
 
+
 # Streamlit page configuration
-st.set_page_config(page_title="Employee Assistant Chatbot")
+st.set_page_config(page_title="Employee Assistant Chatbot", page_icon="🤖", layout="wide")
+
+# Sidebar styling and title
 with st.sidebar:
-    st.title('Employee Assistant Chatbot')
+    st.title('🌟 Employee Assistant Chatbot')
+    st.markdown("Welcome! Use this chatbot to assist with your employee-related queries.")
+    
+    # Document upload section in the sidebar
+    st.subheader("📂 Document Upload")
+    uploaded_file = st.file_uploader("Choose a PDF document to upload:", type="pdf")
+    upload_button = st.button("Upload to Database")
+
+    # Handle file upload
+    if uploaded_file and upload_button:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(uploaded_file.read())
+            temp_file_path = temp_file.name
+
+        # Pass the temporary file path to AddFileToDB
+        bot.AddFileToDB([temp_file_path])
+        st.success(f"File '{uploaded_file.name}' has been successfully uploaded to the database.")
 
 # Function for generating LLM response
 def generate_response(input):
     result = bot.generate(input)
     return result
 
-# Store LLM generated responses
-if "messages" not in st.session_state.keys():
-    st.session_state.messages = [{"role": "assistant", "content": "Hello! I am an employee assistant chatbot. How can I help you today?"}]
+# Initial message setup
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "Hello! I am your employee assistant chatbot. How can I help you today?"}]
 
-# Display chat messages
+# Display chat messages in a more organized style
+st.subheader("💬 Chat Interface")
+chat_container = st.container()
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
+    role_color = "background-color: #2e2c2c;"  # Gray background for all messages
+    with chat_container.container():
+        st.markdown(f"<div style='{role_color} padding: 10px; border-radius: 5px; margin: 5px 0;'>{message['content']}</div>", unsafe_allow_html=True)
 
-# User-provided prompt
-if input := st.chat_input():
+# User input and response generation
+if input := st.chat_input("Type your message here..."):
     st.session_state.messages.append({"role": "user", "content": input})
-    with st.chat_message("user"):
-        st.write(input)
+    with chat_container:
+        st.markdown(f"<div style='background-color: #2e2c2c; padding: 10px; border-radius: 5px; margin: 5px 0;'>{input}</div>", unsafe_allow_html=True)
 
-# Generate a new response if last message is not from assistant
-if st.session_state.messages[-1]["role"] != "assistant":
-    with st.chat_message("assistant"):
-        with st.spinner("Working on it.."):
-            response = generate_response(input) 
-            st.write(response) 
-    message = {"role": "assistant", "content": response}
-    st.session_state.messages.append(message)
-
-# File upload section
-uploaded_file = st.file_uploader("Upload a PDF document", type="pdf")
-if uploaded_file is not None:
-    # Save the uploaded file to a temporary file path
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-        temp_file.write(uploaded_file.read())
-        temp_file_path = temp_file.name
-
-    # Pass the temporary file path to AddFileToDB
-    bot.AddFileToDB([temp_file_path])
-    st.success(f"File '{uploaded_file.name}' has been added to the database.")
+    # Assistant's response
+    with st.spinner("Working on it..."):
+        response = generate_response(input)
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.markdown(f"<div style='background-color: #2e2c2c; padding: 10px; border-radius: 5px; margin: 5px 0;'>{response}</div>", unsafe_allow_html=True)
