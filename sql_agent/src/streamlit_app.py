@@ -65,6 +65,7 @@ async def main() -> None:
         st.header(f"{APP_ICON} {APP_TITLE}")
         ""
         "RAG-Powered Intelligent Chatbot for Enhanced Internal Queries and Customer Support Leveraging LangGraph, FastAPI and Streamlit"
+        show_tool_calls = st.toggle("Show tool calls", value=True)
 
         st.markdown(
             f"Thread ID: **{st.session_state.thread_id}**",
@@ -84,7 +85,7 @@ async def main() -> None:
         for m in messages:
             yield m
 
-    await draw_messages(amessage_iter())
+    await draw_messages(amessage_iter(), show_tool_calls=show_tool_calls)
 
     # Generate new message if the user provided new input
     if user_input := st.chat_input():
@@ -100,10 +101,10 @@ async def main() -> None:
             for m in response.messages:
                 yield m
 
-        await draw_messages(amessage_iter())
+        await draw_messages(amessage_iter(), show_tool_calls=show_tool_calls)
         st.rerun()  # Clear stale containers
 
-async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], is_new: bool = False,) -> None:
+async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], show_tool_calls: bool = True) -> None:
     """
     Draws a set of chat messages
 
@@ -116,7 +117,7 @@ async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], 
 
     Args:
         messages_aiter: An async iterator over messages to draw.
-        is_new: Whether the messages are new or not.
+        show_tool_call: Whether to render the tool call containers or not.
     """
 
     # Keep track of the last message container
@@ -138,10 +139,6 @@ async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], 
             # A message from the agent is the most complex case, since we need to
             # handle tool calls.
             case "ai":
-                # If we're rendering new messages, store the message in session state
-                if is_new:
-                    st.session_state.messages.append(msg)
-
                 # If the last message type was not AI, create a new chat message
                 if last_message_type != "ai":
                     last_message_type = "ai"
@@ -158,32 +155,32 @@ async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], 
                         # correct status container.
                         call_results = {}
                         for tool_call in msg.tool_calls:
-                            status = st.status(
-                                f"""Tool Call: {tool_call["name"]}""",
-                                state="running" if is_new else "complete",
-                            )
-                            call_results[tool_call["id"]] = status
-                            status.write("Input:")
-                            status.write(tool_call["args"])
+                            if show_tool_calls:
+                                status = st.status(
+                                    f"""Tool Call: {tool_call["name"]}""",
+                                    state="complete",
+                                )
+                                call_results[tool_call["id"]] = status
+                                status.write("Input:")
+                                status.write(tool_call["args"])
+                            else:
+                                call_results[tool_call["id"]] = -1
 
                         # Expect one ToolMessage for each tool call.
                         for _ in range(len(call_results)):
                             tool_result: ChatMessage = await anext(messages_agen)
                             if tool_result.type != "tool":
-                                st.error(
-                                    f"Unexpected ChatMessage type: {tool_result.type}"
-                                )
+                                st.error(f"Unexpected ChatMessage type: {tool_result.type}")
                                 st.write(tool_result)
                                 st.stop()
 
                             # Record the message if it's new, and update the correct
                             # status container with the result
-                            if is_new:
-                                st.session_state.messages.append(tool_result)
-                            status = call_results[tool_result.tool_call_id]
-                            status.write("Output:")
-                            status.write(tool_result.content)
-                            status.update(state="complete")
+                            if show_tool_calls:
+                                status = call_results[tool_result.tool_call_id]
+                                status.write("Output:")
+                                status.write(tool_result.content)
+                                status.update(state="complete")
 
             # In case of an unexpected message type, log an error and stop
             case _:
