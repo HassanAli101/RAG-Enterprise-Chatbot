@@ -61,7 +61,7 @@ async def invoke(user_input: UserInput) -> ChatHistory:
     try:
         response = await agent.ainvoke(**kwargs, stream_mode="updates")
         output: list[ChatMessage] = [
-            langchain_to_chat_message(next(iter(event.values()))['messages'][0]) for event in response
+            langchain_to_chat_message(message) for event in response for message in next(iter(event.values()))['messages']
         ]
         return ChatHistory(messages=output)
     except Exception as e:
