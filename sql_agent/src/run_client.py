@@ -9,7 +9,9 @@ async def amain() -> None:
 
     print("Chat example:")
     response = await client.ainvoke("What is the status of order number 3?")
-    response.pretty_print()
+    for message in response.messages:
+        message.pretty_print()
+    
 
 
 asyncio.run(amain())

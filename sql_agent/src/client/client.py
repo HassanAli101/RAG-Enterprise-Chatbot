@@ -19,7 +19,7 @@ class AgentClient:
         self.base_url = base_url
         self.timeout = timeout
 
-    async def ainvoke(self, message: str, thread_id: str | None = None) -> ChatMessage:
+    async def ainvoke(self, message: str, thread_id: str | None = None) -> list[ChatMessage]:
         """
         Invoke the agent asynchronously. Only the final message is returned.
 
@@ -36,7 +36,8 @@ class AgentClient:
         async with httpx.AsyncClient() as client:
             response = await client.post(f"{self.base_url}/invoke", json=request.model_dump(), timeout=self.timeout)
             if response.status_code == 200:
-                return ChatMessage.model_validate(response.json())
+                response_object = response.json()
+                return ChatHistory.model_validate(response_object)
             else:
                 raise Exception(f"Error: {response.status_code} - {response.text}")
 

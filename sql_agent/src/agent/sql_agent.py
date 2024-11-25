@@ -1,5 +1,5 @@
 import os
-from typing import Literal
+from typing import Literal, Annotated, TypedDict
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, SystemMessage
@@ -10,7 +10,8 @@ from langchain_core.runnables import (
 )
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
-from langgraph.graph import START, END, MessagesState, StateGraph
+from langgraph.graph import START, END, StateGraph
+from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.managed import IsLastStep
 from langgraph.prebuilt import ToolNode
@@ -39,7 +40,8 @@ To start you should ALWAYS look at the tables in the database to see what you ca
 Do NOT skip this step.
 Then you should query the schema of the most relevant tables."""
 
-class AgentState(MessagesState, total=False):
+class AgentState(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
     is_last_step: IsLastStep
 
 def wrap_model(model: BaseChatModel) -> RunnableSerializable[AgentState, AIMessage]:
