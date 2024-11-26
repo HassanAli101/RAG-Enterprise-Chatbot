@@ -10,9 +10,7 @@ from schema import ChatHistory, ChatMessage
 # The app has three main functions which are all run async:
 
 # - main() - sets up the streamlit app and high level structure
-# - draw_messages() - draws a set of chat messages - either replaying existing messages
-#   or streaming new ones.
-# - handle_feedback() - Draws a feedback widget and records feedback from the user.
+# - draw_messages() - draws a set of chat messages
 
 # The app heavily uses AgentClient to interact with the agent's FastAPI endpoints.
 
@@ -67,6 +65,7 @@ async def main() -> None:
         st.header(f"{APP_ICON} {APP_TITLE}")
         ""
         "RAG-Powered Intelligent Chatbot for Enhanced Internal Queries and Customer Support Leveraging LangGraph, FastAPI and Streamlit"
+        show_tool_calls = st.toggle("Show tool calls", value=True)
 
         st.markdown(
             f"Thread ID: **{st.session_state.thread_id}**",
@@ -86,60 +85,47 @@ async def main() -> None:
         for m in messages:
             yield m
 
-    await draw_messages(amessage_iter())
+    await draw_messages(amessage_iter(), show_tool_calls=show_tool_calls)
 
     # Generate new message if the user provided new input
     if user_input := st.chat_input():
         messages.append(ChatMessage(type="human", content=user_input))
         st.chat_message("human").write(user_input)
         response = await agent_client.ainvoke(message=user_input, thread_id=st.session_state.thread_id)
-        messages.append(response)
-        st.chat_message("ai").write(response.content)
+
+        for msg in response.messages:
+            messages.append(msg)
+
+        # draw new messages
+        async def amessage_iter() -> AsyncGenerator[ChatMessage, None]:
+            for m in response.messages:
+                yield m
+
+        await draw_messages(amessage_iter(), show_tool_calls=show_tool_calls)
         st.rerun()  # Clear stale containers
 
-async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], is_new: bool = False,) -> None:
+async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], show_tool_calls: bool = True) -> None:
     """
-    Draws a set of chat messages - either replaying existing messages
-    or streaming new ones.
+    Draws a set of chat messages
 
-    This function has additional logic to handle streaming tokens and tool calls.
-    - Use a placeholder container to render streaming tokens as they arrive.
+    This function has additional logic to handle tool calls.
     - Use a status container to render tool calls. Track the tool inputs and outputs
-      and update the status container accordingly.
+        and update the status container accordingly.
 
     The function also needs to track the last message container in session state
-    since later messages can draw to the same container. This is also used for
-    drawing the feedback widget in the latest chat message.
+    since later messages can draw to the same container.
 
     Args:
         messages_aiter: An async iterator over messages to draw.
-        is_new: Whether the messages are new or not.
+        show_tool_call: Whether to render the tool call containers or not.
     """
 
     # Keep track of the last message container
     last_message_type = None
     st.session_state.last_message = None
 
-    # Placeholder for intermediate streaming tokens
-    streaming_content = ""
-    streaming_placeholder = None
-
     # Iterate over the messages and draw them
     while msg := await anext(messages_agen, None):
-        # str message represents an intermediate token being streamed
-        if isinstance(msg, str):
-            # If placeholder is empty, this is the first token of a new message
-            # being streamed. We need to do setup.
-            if not streaming_placeholder:
-                if last_message_type != "ai":
-                    last_message_type = "ai"
-                    st.session_state.last_message = st.chat_message("ai")
-                with st.session_state.last_message:
-                    streaming_placeholder = st.empty()
-
-            streaming_content += msg
-            streaming_placeholder.write(streaming_content)
-            continue
         if not isinstance(msg, ChatMessage):
             st.error(f"Unexpected message type: {type(msg)}")
             st.write(msg)
@@ -151,12 +137,8 @@ async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], 
                 st.chat_message("human").write(msg.content)
 
             # A message from the agent is the most complex case, since we need to
-            # handle streaming tokens and tool calls.
+            # handle tool calls.
             case "ai":
-                # If we're rendering new messages, store the message in session state
-                if is_new:
-                    st.session_state.messages.append(msg)
-
                 # If the last message type was not AI, create a new chat message
                 if last_message_type != "ai":
                     last_message_type = "ai"
@@ -164,14 +146,8 @@ async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], 
 
                 with st.session_state.last_message:
                     # If the message has content, write it out.
-                    # Reset the streaming variables to prepare for the next message.
                     if msg.content:
-                        if streaming_placeholder:
-                            streaming_placeholder.write(msg.content)
-                            streaming_content = ""
-                            streaming_placeholder = None
-                        else:
-                            st.write(msg.content)
+                        st.write(msg.content)
 
                     if msg.tool_calls:
                         # Create a status container for each tool call and store the
@@ -179,32 +155,32 @@ async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], 
                         # correct status container.
                         call_results = {}
                         for tool_call in msg.tool_calls:
-                            status = st.status(
-                                f"""Tool Call: {tool_call["name"]}""",
-                                state="running" if is_new else "complete",
-                            )
-                            call_results[tool_call["id"]] = status
-                            status.write("Input:")
-                            status.write(tool_call["args"])
+                            if show_tool_calls:
+                                status = st.status(
+                                    f"""Tool Call: {tool_call["name"]}""",
+                                    state="complete",
+                                )
+                                call_results[tool_call["id"]] = status
+                                status.write("Input:")
+                                status.write(tool_call["args"])
+                            else:
+                                call_results[tool_call["id"]] = -1
 
                         # Expect one ToolMessage for each tool call.
                         for _ in range(len(call_results)):
                             tool_result: ChatMessage = await anext(messages_agen)
                             if tool_result.type != "tool":
-                                st.error(
-                                    f"Unexpected ChatMessage type: {tool_result.type}"
-                                )
+                                st.error(f"Unexpected ChatMessage type: {tool_result.type}")
                                 st.write(tool_result)
                                 st.stop()
 
                             # Record the message if it's new, and update the correct
                             # status container with the result
-                            if is_new:
-                                st.session_state.messages.append(tool_result)
-                            status = call_results[tool_result.tool_call_id]
-                            status.write("Output:")
-                            status.write(tool_result.content)
-                            status.update(state="complete")
+                            if show_tool_calls:
+                                status = call_results[tool_result.tool_call_id]
+                                status.write("Output:")
+                                status.write(tool_result.content)
+                                status.update(state="complete")
 
             # In case of an unexpected message type, log an error and stop
             case _:
