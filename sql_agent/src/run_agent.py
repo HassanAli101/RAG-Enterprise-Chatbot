@@ -9,7 +9,7 @@ from langchain_community.utilities import SQLDatabase
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 
-from agent import SqlAgent
+from agent import SqlAgent, RouterAgent
 
 load_dotenv()
 
@@ -49,10 +49,12 @@ async def amain():
 
     config = {"configurable": {"thread_id": "1"}}
 
-    await stream_graph_updates(sql_agent_ro, query, config)
+    # await stream_graph_updates(sql_agent_ro, query, config)
+    router = RouterAgent(model=llm, memory=MemorySaver(), tools=db_ro_tools, sql_agent=sql_agent_ro)
+    router_agent=router.get_agent()
 
-    # graph_png = sql_agent_ro.get_graph(xray=1).draw_mermaid_png()
-    # with open("graph_output.png", "wb") as f:
-    #     f.write(graph_png)
+    graph_png = router_agent.get_graph(xray=1).draw_mermaid_png()
+    with open("graph.png", "wb") as f:
+        f.write(graph_png)
 
 asyncio.run(amain())
