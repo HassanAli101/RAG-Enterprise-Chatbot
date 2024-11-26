@@ -42,8 +42,8 @@ def init_db_toolkit(db: SQLDatabase):
     db_tools={tool.name:tool for tool in db_toolkit.get_tools()}
     return db_tools
 
-def init_sql_agent(memory, db: SQLDatabase, tools: list):
-    sql_agent = SqlAgent(model=llm, memory=memory, db=db, tools=tools)
+def init_sql_agent(memory, tools: list):
+    sql_agent = SqlAgent(model=llm, memory=memory, tools=tools)
     return sql_agent.get_agent()
 
 @asynccontextmanager
@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     db_rw_tools = list(db_tools.values())
 
     async with checkpointer() as memory:
-        sql_agent_ro = init_sql_agent(memory, db_connections["db_ro"], db_ro_tools)
+        sql_agent_ro = init_sql_agent(memory, db_ro_tools)
         app.state.agent = sql_agent_ro
         yield
 

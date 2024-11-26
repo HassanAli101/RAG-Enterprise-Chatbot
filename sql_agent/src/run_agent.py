@@ -25,8 +25,8 @@ def init_db_toolkit(db: SQLDatabase):
     db_tools={tool.name:tool for tool in db_toolkit.get_tools()}
     return db_tools
 
-def init_sql_agent(memory, db: SQLDatabase, tools: list):
-    sql_agent = SqlAgent(model=llm, memory=memory, db=db, tools=tools)
+def init_sql_agent(memory, tools: list):
+    sql_agent = SqlAgent(model=llm, memory=memory, tools=tools)
     return sql_agent.get_agent()
 
 async def stream_graph_updates(graph, user_input: str, config):
@@ -45,10 +45,14 @@ async def amain():
     db_tools = init_db_toolkit(db_connections["db_rw"])
     db_rw_tools = list(db_tools.values())
 
-    sql_agent_ro = init_sql_agent(MemorySaver(), db_connections["db_ro"], db_ro_tools)
+    sql_agent_ro = init_sql_agent(MemorySaver(), db_ro_tools)
 
     config = {"configurable": {"thread_id": "1"}}
 
     await stream_graph_updates(sql_agent_ro, query, config)
+
+    # graph_png = sql_agent_ro.get_graph(xray=1).draw_mermaid_png()
+    # with open("graph_output.png", "wb") as f:
+    #     f.write(graph_png)
 
 asyncio.run(amain())

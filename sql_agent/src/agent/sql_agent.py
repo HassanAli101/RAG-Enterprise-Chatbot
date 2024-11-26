@@ -37,10 +37,9 @@ class AgentState(TypedDict):
 
 
 class SqlAgent:
-    def __init__(self, model: BaseChatModel, memory, db, tools):
+    def __init__(self, model: BaseChatModel, memory, tools):
         self.model = model
         self.memory = memory
-        self.db = db
         self.tools = tools
         self.agent = self._build_agent()
 
