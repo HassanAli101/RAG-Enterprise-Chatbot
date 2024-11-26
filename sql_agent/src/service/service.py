@@ -1,3 +1,4 @@
+import os
 import logging
 import warnings
 from collections.abc import AsyncGenerator
@@ -12,7 +13,12 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 
-from agent import sql_agent
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain_community.utilities import SQLDatabase
+from langchain_openai import ChatOpenAI
+
+from agent import SqlAgent
+
 from schema import (
     ChatHistory,
     ChatHistoryInput,
@@ -24,15 +30,39 @@ from service.utils import langchain_to_chat_message
 warnings.filterwarnings("ignore", category=LangChainBetaWarning)
 logger = logging.getLogger(__name__)
 
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.5)
+
+def init_db():
+    db_ro = SQLDatabase.from_uri(os.getenv("DATABASE_URI_RO"), engine_args={"pool_pre_ping": True})
+    db_rw = SQLDatabase.from_uri(os.getenv("DATABASE_URI_RW"), engine_args={"pool_pre_ping": True})
+    return {"db_ro": db_ro, "db_rw": db_rw}
+
+def init_db_toolkit(db: SQLDatabase):
+    db_toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+    db_tools={tool.name:tool for tool in db_toolkit.get_tools()}
+    return db_tools
+
+def init_sql_agent(memory, db: SQLDatabase, tools: list):
+    sql_agent = SqlAgent(model=llm, memory=memory, db=db, tools=tools)
+    return sql_agent.get_agent()
+
+@asynccontextmanager
+async def checkpointer() -> AsyncGenerator[None, None]:
+    async with AsyncSqliteSaver.from_conn_string("checkpoints.db") as memory:
+        yield memory
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # Construct agent with Sqlite checkpointer
-    async with AsyncSqliteSaver.from_conn_string("checkpoints.db") as saver:
-        sql_agent.checkpointer = saver
-        app.state.agent = sql_agent
-        yield
-    # context manager will clean up the AsyncSqliteSaver on exit
+    db_connections = init_db()
+    db_tools = init_db_toolkit(db_connections["db_ro"])
+    db_ro_tools = [db_tools.get(key) for key in ["sql_db_list_tables", "sql_db_schema"]]
+    db_tools = init_db_toolkit(db_connections["db_rw"])
+    db_rw_tools = list(db_tools.values())
 
+    async with checkpointer() as memory:
+        sql_agent_ro = init_sql_agent(memory, db_connections["db_ro"], db_ro_tools)
+        app.state.agent = sql_agent_ro
+        yield
 
 app = FastAPI(lifespan=lifespan)
 router = APIRouter()

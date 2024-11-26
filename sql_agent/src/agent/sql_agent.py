@@ -1,4 +1,3 @@
-import os
 from typing import Literal, Annotated, TypedDict
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -8,19 +7,11 @@ from langchain_core.runnables import (
     RunnableLambda,
     RunnableSerializable,
 )
-from langchain_community.agent_toolkits import SQLDatabaseToolkit
-from langchain_community.utilities import SQLDatabase
+
 from langgraph.graph import START, END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.managed import IsLastStep
 from langgraph.prebuilt import ToolNode
-from langchain_openai import ChatOpenAI
-
-model = ChatOpenAI(model="gpt-4o-mini", temperature=0.5)
-db = SQLDatabase.from_uri(os.getenv("DATABASE_URI_RO"))
-toolkit = SQLDatabaseToolkit(db=db, llm=model)
-tools = toolkit.get_tools()
 
 dialect = "PostgreSQL"
 top_k = 5
@@ -46,8 +37,9 @@ class AgentState(TypedDict):
 
 
 class SqlAgent:
-    def __init__(self, model: BaseChatModel, db, tools):
+    def __init__(self, model: BaseChatModel, memory, db, tools):
         self.model = model
+        self.memory = memory
         self.db = db
         self.tools = tools
         self.agent = self._build_agent()
@@ -94,11 +86,8 @@ class SqlAgent:
 
         # Compile the agent with a checkpointer
         return agent.compile(
-            checkpointer=MemorySaver(),
+            checkpointer=self.memory,
         )
 
     def get_agent(self):
         return self.agent
-
-
-sql_agent = SqlAgent(model=model, db=db, tools=tools).get_agent()

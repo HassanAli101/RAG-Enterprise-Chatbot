@@ -1,3 +1,3 @@
-from agent.sql_agent import sql_agent
+from agent.sql_agent import SqlAgent
 
-__all__ = ["sql_agent"]
+__all__ = ["SqlAgent"]
