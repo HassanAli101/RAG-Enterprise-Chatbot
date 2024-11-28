@@ -43,14 +43,6 @@ class SqlAgent:
         self.tools = tools
         self.agent = self._build_agent()
 
-    def _wrap_model(self) -> RunnableSerializable[AgentState, AIMessage]:
-        self.model = self.model.bind_tools(self.tools)
-        preprocessor = RunnableLambda(
-            lambda state: [SystemMessage(content=system_message)] + state["messages"],
-            name="StateModifier",
-        )
-        return preprocessor | self.model
-
     async def acall_model(self, state: AgentState, config: RunnableConfig) -> AgentState:
         model_runnable = self._wrap_model()
         response = await model_runnable.ainvoke(state, config)
@@ -61,7 +53,15 @@ class SqlAgent:
             }
         return {"messages": [response]}
 
-    def pending_tool_calls(self, state: AgentState) -> Literal["tools", "done"]:
+    def _wrap_model(self) -> RunnableSerializable[AgentState, AIMessage]:
+        self.model = self.model.bind_tools(self.tools)
+        preprocessor = RunnableLambda(
+            lambda state: [SystemMessage(content=system_message)] + state["messages"],
+            name="StateModifier",
+        )
+        return preprocessor | self.model
+
+    def _pending_tool_calls(self, state: AgentState) -> Literal["tools", "done"]:
         last_message = state["messages"][-1]
         if not isinstance(last_message, AIMessage):
             raise TypeError(f"Expected AIMessage, got {type(last_message)}")
@@ -80,7 +80,7 @@ class SqlAgent:
         agent.add_edge("tools", "model")  # Always run "model" after "tools"
 
         agent.add_conditional_edges(
-            "model", self.pending_tool_calls, {"tools": "tools", "done": END}
+            "model", self._pending_tool_calls, {"tools": "tools", "done": END}
         )
 
         # Compile the agent with a checkpointer
