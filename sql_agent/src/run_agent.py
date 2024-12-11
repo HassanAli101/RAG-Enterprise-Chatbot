@@ -42,8 +42,8 @@ async def stream_graph_updates(graph, user_input: str, config):
         message.pretty_print()
 
 async def arun_sql_agent():
-    query="what is the status of order number 3?"
-    # query="Hi"
+    # query="what is the status of order number 3?"
+    query="How tall is Burj Khalifa?"
     db_connections = init_db()
     db_tools = init_db_toolkit(db_connections["db_ro"])
     db_ro_tools = [db_tools.get(key) for key in ["sql_db_list_tables", "sql_db_schema"]]
@@ -58,9 +58,9 @@ async def arun_sql_agent():
     router = RouterAgent(model=llm, memory=MemorySaver(), tools=db_ro_tools, sql_agent=sql_agent_ro)
     router_agent=router.get_agent()
 
-    # graph_png = router_agent.get_graph(xray=1).draw_mermaid_png()
-    # with open("graph.png", "wb") as f:
-    #     f.write(graph_png)
+    graph_png = router_agent.get_graph(xray=1).draw_mermaid_png()
+    with open("graph.png", "wb") as f:
+        f.write(graph_png)
 
 def run_customer_rag_agent():
     # Initialize document loader

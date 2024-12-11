@@ -73,14 +73,14 @@ class SqlAgent:
         # Define the graph
         agent = StateGraph(AgentState)
 
-        agent.add_node("model", self.acall_model)
+        agent.add_node("llm", self.acall_model)
         agent.add_node("tools", ToolNode(self.tools))
 
-        agent.add_edge(START, "model")
-        agent.add_edge("tools", "model")  # Always run "model" after "tools"
+        agent.add_edge(START, "llm")
+        agent.add_edge("tools", "llm")  # Always run "llm" after "tools"
 
         agent.add_conditional_edges(
-            "model", self._pending_tool_calls, {"tools": "tools", "done": END}
+            "llm", self._pending_tool_calls, {"tools": "tools", "done": END}
         )
 
         # Compile the agent with a checkpointer

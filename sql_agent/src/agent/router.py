@@ -72,27 +72,28 @@ class RouterAgent:
         response = self.model.invoke(messages)
         return {"messages": [response]}
 
-    def _route_after_prediction(self, state: RouterState,) -> Literal["sql_agent_node", "_normal_llm_node", "tools"]:
+    def _route_after_prediction(self, state: RouterState,) -> Literal["sql_agent", "general_assistant", "tools"]:
         if state["route"] == "database":
-            return "sql_agent_node"
+            return "sql_agent"
         elif state["route"] == "tool_call":
             return "tools"
         else:
-            return "_normal_llm_node"
+            return "general_assistant"
 
     def _build_agent(self) -> StateGraph:
         graph = StateGraph(RouterState)
 
-        graph.add_node(self._router_node)
-        graph.add_node(self._normal_llm_node)
-        graph.add_node("sql_agent_node", self.sql_agent)
+        graph.add_node("coordinator", self._router_node)
+        graph.add_node("general_assistant", self._normal_llm_node)
+        graph.add_node("sql_agent", self.sql_agent)
         graph.add_node("tools", ToolNode(self.tools))
 
-        graph.add_edge(START, "_router_node")
-        graph.add_conditional_edges("_router_node", self._route_after_prediction)
-        graph.add_edge("tools", "_router_node")
-        graph.add_edge("_normal_llm_node", END)
-        graph.add_edge("sql_agent_node", END)
+        graph.add_edge(START, "coordinator")
+        graph.add_edge("coordinator", END)
+        graph.add_conditional_edges("coordinator", self._route_after_prediction)
+        graph.add_edge("tools", "coordinator")
+        graph.add_edge("general_assistant", "coordinator")
+        graph.add_edge("sql_agent", "coordinator")
 
         return graph.compile(
             checkpointer=self.memory,
