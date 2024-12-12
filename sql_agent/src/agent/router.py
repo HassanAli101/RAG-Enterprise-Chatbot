@@ -43,14 +43,6 @@ class RouterAgent:
         self.sql_agent = sql_agent
         self.agent = self._build_agent()
 
-    def _wrap_model(self) -> RunnableSerializable[AgentState, AIMessage]:
-        self.model = self.model.bind_tools(self.tools).with_structured_output(Router)
-        preprocessor = RunnableLambda(
-            lambda state: [SystemMessage(content=system_message)] + state["messages"],
-            name="StateModifier",
-        )
-        return preprocessor | self.model
-
     async def acall_model(self, state: AgentState, config: RunnableConfig) -> AgentState:
         model_runnable = self._wrap_model()
         response = await model_runnable.ainvoke(state, config)
@@ -61,38 +53,47 @@ class RouterAgent:
             }
         return {"messages": [response]}
 
-    def router_node(self, state: RouterState):
+    def _wrap_model(self) -> RunnableSerializable[AgentState, AIMessage]:
+        self.model = self.model.bind_tools(self.tools).with_structured_output(Router)
+        preprocessor = RunnableLambda(
+            lambda state: [SystemMessage(content=system_message)] + state["messages"],
+            name="StateModifier",
+        )
+        return preprocessor | self.model
+
+    def _router_node(self, state: RouterState):
         messages = [{"role": "system", "content": system_message}] + state["messages"]
         route = self.model.invoke(messages)
         return {"route": route["route"]}
 
-    def normal_llm_node(self, state: RouterState):
+    def _normal_llm_node(self, state: RouterState):
         system_message = "You are a helpful AI assistant. Answer the user questions."
         messages = [{"role": "system", "content": system_message}] + state["messages"]
         response = self.model.invoke(messages)
         return {"messages": [response]}
 
-    def route_after_prediction(self, state: RouterState,) -> Literal["sql_agent_node", "normal_llm_node", "tools"]:
+    def _route_after_prediction(self, state: RouterState,) -> Literal["sql_agent", "general_assistant", "tools"]:
         if state["route"] == "database":
-            return "sql_agent_node"
+            return "sql_agent"
         elif state["route"] == "tool_call":
             return "tools"
         else:
-            return "normal_llm_node"
+            return "general_assistant"
 
     def _build_agent(self) -> StateGraph:
         graph = StateGraph(RouterState)
 
-        graph.add_node(self.router_node)
-        graph.add_node(self.normal_llm_node)
-        graph.add_node("sql_agent_node", self.sql_agent)
+        graph.add_node("coordinator", self._router_node)
+        graph.add_node("general_assistant", self._normal_llm_node)
+        graph.add_node("sql_agent", self.sql_agent)
         graph.add_node("tools", ToolNode(self.tools))
 
-        graph.add_edge(START, "router_node")
-        graph.add_conditional_edges("router_node", self.route_after_prediction)
-        graph.add_edge("tools", "router_node")
-        graph.add_edge("normal_llm_node", END)
-        graph.add_edge("sql_agent_node", END)
+        graph.add_edge(START, "coordinator")
+        graph.add_edge("coordinator", END)
+        graph.add_conditional_edges("coordinator", self._route_after_prediction)
+        graph.add_edge("tools", "coordinator")
+        graph.add_edge("general_assistant", "coordinator")
+        graph.add_edge("sql_agent", "coordinator")
 
         return graph.compile(
             checkpointer=self.memory,
