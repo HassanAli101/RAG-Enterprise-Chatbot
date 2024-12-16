@@ -97,3 +97,6 @@ class ChatHistoryInput(BaseModel):
 
 class ChatHistory(BaseModel):
     messages: list[ChatMessage]
+    # representative_memory: list[ChatMessage]
+    # pending_tool_calls: list
+    # agent_responses: list

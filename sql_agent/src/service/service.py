@@ -17,7 +17,10 @@ from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
 from langchain_openai import ChatOpenAI
 
-from agent import SqlAgent
+from langchain_huggingface import HuggingFaceEmbeddings
+from pinecone import Pinecone
+
+from agent import CustomerRagAgent, DocumentLoader, VectorStore, Chatbot
 
 from schema import (
     ChatHistory,
@@ -32,19 +35,31 @@ logger = logging.getLogger(__name__)
 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.5)
 
-def init_db():
-    db_ro = SQLDatabase.from_uri(os.getenv("DATABASE_URI_RO"), engine_args={"pool_pre_ping": True})
-    db_rw = SQLDatabase.from_uri(os.getenv("DATABASE_URI_RW"), engine_args={"pool_pre_ping": True})
-    return {"db_ro": db_ro, "db_rw": db_rw}
-
-def init_db_toolkit(db: SQLDatabase):
+def init_sql_tools(permission):
+    if permission == "read_only":
+        db = SQLDatabase.from_uri(os.getenv("DATABASE_URI_RO"), engine_args={"pool_pre_ping": True})
+    elif permission == "read_write":
+        db = SQLDatabase.from_uri(os.getenv("DATABASE_URI_RW"), engine_args={"pool_pre_ping": True})
+    else:
+        raise ValueError("Invalid permission")
     db_toolkit = SQLDatabaseToolkit(db=db, llm=llm)
     db_tools={tool.name:tool for tool in db_toolkit.get_tools()}
     return db_tools
 
-def init_sql_agent(memory, tools: list):
-    sql_agent = SqlAgent(model=llm, memory=memory, tools=tools)
-    return sql_agent.get_agent()
+def init_customer_rag_pipeline():
+    doc_loader = DocumentLoader()
+    pinecone_client = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    vector_store = VectorStore(
+        pinecone_client=pinecone_client,
+        index_name="customer-queries-db",
+        embedding_model=HuggingFaceEmbeddings(),
+    )
+    rag_pipeline = CustomerRagAgent(
+        document_loader=doc_loader,
+        vector_store=vector_store,
+        llm=llm,
+    )
+    return rag_pipeline
 
 @asynccontextmanager
 async def checkpointer() -> AsyncGenerator[None, None]:
@@ -53,15 +68,12 @@ async def checkpointer() -> AsyncGenerator[None, None]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    db_connections = init_db()
-    db_tools = init_db_toolkit(db_connections["db_ro"])
-    db_ro_tools = [db_tools.get(key) for key in ["sql_db_list_tables", "sql_db_schema"]]
-    db_tools = init_db_toolkit(db_connections["db_rw"])
-    db_rw_tools = list(db_tools.values())
+    db_tools = init_sql_tools("read_only")
+    rag_pipeline = init_customer_rag_pipeline()
 
     async with checkpointer() as memory:
-        sql_agent_ro = init_sql_agent(memory, db_ro_tools)
-        app.state.agent = sql_agent_ro
+        chatbot = Chatbot(llm, rag_pipeline, db_tools, memory)
+        app.state.agent = chatbot.build_graph()
         yield
 
 app = FastAPI(lifespan=lifespan)
@@ -122,5 +134,29 @@ def history(input: ChatHistoryInput) -> ChatHistory:
         logger.error(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error")
 
+
+@router.post("/init")
+def init(input: ChatHistoryInput):
+    """
+    Initialize State Graph with empty memory.
+    """
+    agent: CompiledStateGraph = app.state.agent
+    try:
+        agent.update_state(
+            RunnableConfig(
+                configurable={
+                    "thread_id": input.thread_id,
+                }
+            ),
+            {
+                "messages": [],
+                "assistant_memory": [],
+                "pending_tool_calls": [],
+                "agent_responses": []
+            }
+        )
+    except Exception as e:
+        logger.error(f"An exception occurred: {e}")
+        raise HTTPException(status_code=500, detail="Unexpected error")
 
 app.include_router(router)

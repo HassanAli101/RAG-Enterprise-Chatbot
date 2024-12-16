@@ -54,6 +54,8 @@ async def main() -> None:
         thread_id = st.query_params.get("thread_id")
         if not thread_id:
             thread_id = get_script_run_ctx().session_id
+            # TODO: initialize graph state
+            agent_client.initialize_state(thread_id)
             messages = []
         else:
             history: ChatHistory = agent_client.get_history(thread_id=thread_id)

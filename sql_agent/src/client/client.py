@@ -55,3 +55,17 @@ class AgentClient:
             return ChatHistory.model_validate(response_object)
         else:
             raise Exception(f"Error: {response.status_code} - {response.text}")
+
+    def initialize_state(self, thread_id: str):
+        """
+        Initialize the state graph with empty memory.
+
+        Args:
+            thread_id (str, optional): Thread ID for identifying a conversation
+        """
+        request = ChatHistoryInput(thread_id=thread_id)
+        response = httpx.post(f"{self.base_url}/init", json=request.model_dump(), timeout=self.timeout)
+        if response.status_code == 200:
+            pass
+        else:
+            raise Exception(f"Error: {response.status_code} - {response.text}")

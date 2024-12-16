@@ -3,36 +3,18 @@ from uuid import uuid4
 from pinecone import ServerlessSpec
 from langchain_pinecone import PineconeVectorStore
 from langchain.prompts import PromptTemplate
-from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
-from langchain.schema.output_parser import StrOutputParser
+from langchain.schema.runnable import RunnablePassthrough
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import TokenTextSplitter
 
-prompts = {
-    "classifier_prompt": PromptTemplate(
-        template="""
-            You are a prompt classifier designed to classify questions from customers for an organization.
-            Classify the following question into "Relevant" or "Irrelevant", based on whether the query theme is a customer question about an organization's policy.
-            Only answer with "Relevant" or "Irrelevant".
+rag_prompt_template = """Answer the question based on the given context and question.
 
-            Question: {question}
-            Answer:
-        """,
-        input_variables=["question"],
-    ),
-    "employee_prompt": PromptTemplate(
-        template="""
-            You are a chatbot designed to answer questions from customers of an organization.
-            Use the following extract from relevant documents to answer the question.
+Context: {context} Question: {question} Answer:"""
 
-            Context: {context}
-            Question: {question}
-            Answer:
-        """,
-        input_variables=["context", "question"],
-    ),
-}
-
+rag_prompt = PromptTemplate(
+    template=rag_prompt_template,
+    input_variables=["context", "question"],
+)
 
 class DocumentLoader:
     def __init__(self, chunk_size=256, chunk_overlap=0.50):
@@ -95,46 +77,27 @@ class VectorStore:
 
 
 class CustomerRagAgent:
-    def __init__(self, document_loader, vector_store, llm, memory):
+    def __init__(self, document_loader, vector_store, llm):
         self.document_loader = document_loader
         self.vector_store = vector_store
         self.retriever = self.vector_store._as_retriever()
         self.llm = llm
-        self.memory = memory
-
-        self.classifier_chain = (
-            {"question": RunnablePassthrough()}
-            | prompts["classifier_prompt"]
-            | self.llm
-            | StrOutputParser()
-        )
-        self.employee_chain = (
+        self.rag_chain = (
             {
                 "context": self.retriever | self._format_docs,
                 "question": RunnablePassthrough(),
             }
-            | prompts["employee_prompt"]
+            | rag_prompt
             | self.llm
-            | StrOutputParser()
         )
-        self.full_chain = {
-            "Relevancy": self.classifier_chain,
-            "question": lambda x: x["question"],
-        } | RunnableLambda(self._route)
 
     def _format_docs(self, docs):
         return "\n\n".join([d.page_content for d in docs])
-
-    def _route(self, info):
-        if "relevant" in info["Relevancy"].lower():
-            return self.employee_chain.invoke(info["question"])
-        else:
-            return "Your question was not relevant to our organization"
 
     def load_and_add_documents(self, docs_to_load):
         documents = self.document_loader._load_and_split(docs_to_load)
         self.vector_store._build(documents)
 
     def generate(self, query):
-        query_response = self.full_chain.invoke({"question": query})
+        query_response = self.rag_chain.invoke(query)
         return query_response
