@@ -42,6 +42,8 @@ def langchain_to_chat_message(message: BaseMessage) -> ChatMessage:
                 ai_message.tool_calls = message.tool_calls
             if message.response_metadata:
                 ai_message.response_metadata = message.response_metadata
+            if message.name:
+                ai_message.name = message.name
             return ai_message
         case ToolMessage():
             tool_message = ChatMessage(

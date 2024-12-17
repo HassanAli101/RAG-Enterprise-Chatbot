@@ -99,7 +99,7 @@ class Chatbot:
             if len(tool_calls) == 1:
                 return {"messages": [response], "representative_memory": [last_message]}
             response.tool_calls=[tool_calls[0]]
-            return {"messages": [response], "representative_memory": [last_message], "pending_tool_calls": tool_calls[1:]}
+            return {"messages": [response], "representative_memory": [last_message], "pending_tool_calls": [tc for tc in tool_calls[1:] if tc["name"] != ToRepresentative.__name__]}
         pending_tool_calls = state["pending_tool_calls"]
         agent_responses = state["agent_responses"]
         agent_responses.append(last_message.content)
@@ -117,16 +117,20 @@ class Chatbot:
 
     def _customer_rag_node(self, state: State):
         query=state["messages"][-2].tool_calls[0]["args"]["query"]
-        return {"messages": [self.rag_pipeline.generate(query)]}
+        response = self.rag_pipeline.generate(query)
+        response.name = "rag_agent"
+        return {"messages": [response]}
 
     def _sql_agent_node(self, state: State):
         messages = [self.sql_prompt] + state["messages"]
         response = self.sql_llm.invoke(messages)
+        response.name = "sql_agent"
         return {"messages": [response]}
 
     def _representative_node(self, state: State):
         messages = [{"role": "system", "content": self.representative_prompt}] + state["representative_memory"]
         response = self.llm.invoke(messages)
+        response.name = "representative"
         return {"messages": [response], "representative_memory": [response], "pending_tool_calls": [], "agent_responses": []} # flush the tool calls and agent rsponses
 
     def _route_coordinator(self, state: State):
@@ -172,10 +176,11 @@ class Chatbot:
                     ],
                 }
             else: # add final output from the agent to the assistant memory
-                last_message.content = f"Response from {assistant_name}: {last_message.content}"
+                message = AIMessage(content=f"Response from {assistant_name}: {last_message.content}")
+                message.name = None
                 response = {
-                    "messages": [last_message],
-                    "representative_memory": [last_message],
+                    "messages": [],
+                    "representative_memory": [message],
                 }
             return response
         if flow == "one_way":

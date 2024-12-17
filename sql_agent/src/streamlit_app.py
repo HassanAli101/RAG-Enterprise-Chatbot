@@ -149,7 +149,19 @@ async def draw_messages(messages_agen: AsyncGenerator[ChatMessage | str, None], 
                 with st.session_state.last_message:
                     # If the message has content, write it out.
                     if msg.content:
-                        st.write(msg.content)
+                        match msg.name:
+                            case "representative":
+                                st.write(msg.content)
+                            case "sql_agent":
+                                if show_tool_calls:
+                                    with st.status("SQL Agent", state="complete"):
+                                        st.write(msg.content)
+                            case "rag_agent":
+                                if show_tool_calls:
+                                    with st.status("RAG Agent", state="complete"):
+                                        st.write(msg.content)
+                            case _:
+                                pass
 
                     if msg.tool_calls:
                         # Create a status container for each tool call and store the

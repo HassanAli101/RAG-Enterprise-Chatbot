@@ -41,6 +41,11 @@ class ChatMessage(BaseModel):
         description="Content of the message.",
         examples=["Hello, world!"],
     )
+    name: str | None = Field(
+        description="Name of the node that emitted this message.",
+        default=None,
+        examples=["representative", "rag_agent", "sql_agent"],
+    )
     tool_calls: list[ToolCall] = Field(
         description="Tool calls in the message.",
         default=[],
@@ -97,6 +102,3 @@ class ChatHistoryInput(BaseModel):
 
 class ChatHistory(BaseModel):
     messages: list[ChatMessage]
-    # representative_memory: list[ChatMessage]
-    # pending_tool_calls: list
-    # agent_responses: list
