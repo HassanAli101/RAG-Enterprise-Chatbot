@@ -1,4 +1,4 @@
-from schema.schema import (
+from customer_interface.schema.schema import (
     ChatHistory,
     ChatHistoryInput,
     ChatMessage,

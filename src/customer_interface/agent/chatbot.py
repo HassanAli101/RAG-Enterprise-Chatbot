@@ -10,7 +10,7 @@ from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.managed import IsLastStep
 from langgraph.prebuilt import ToolNode
 
-from agent.tools import ToRagAgent, ToRepresentative, ToSqlAgent
+from customer_interface.agent.tools import ToRagAgent, ToRepresentative, ToSqlAgent
 
 # Prompts
 coordinator_prompt = """You are the Coordinator in a multi-agent chatbot system

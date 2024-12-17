@@ -3,7 +3,7 @@ from langchain.agents import initialize_agent, AgentType
 from langchain.prompts import PromptTemplate
 from langchain.agents import AgentExecutor
 from langchain.agents import create_tool_calling_agent
-from EmployeeCentered import EmployeeChatBot
+from employee_interface.EmployeeCentered import EmployeeChatBot
 
 # Initialize your chatbot
 bot = EmployeeChatBot()

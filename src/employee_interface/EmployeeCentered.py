@@ -65,7 +65,7 @@ import re
 #for cohere:
 import cohere
 
-dotenv.load_dotenv()
+dotenv.load_dotenv("/Users/tariqmehmood/code/cs-6303/RAG-Enterprise-Chatbot/src/.env")
 
 class EmployeeChatBot:
     # TODO: To be implemented

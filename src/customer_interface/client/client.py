@@ -1,6 +1,6 @@
 import httpx
 
-from schema import (
+from customer_interface.schema import (
     ChatHistory,
     ChatHistoryInput,
     ChatMessage,
