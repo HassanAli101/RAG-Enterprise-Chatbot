@@ -6,15 +6,6 @@ from collections.abc import AsyncGenerator
 from client import AgentClient
 from schema import ChatHistory, ChatMessage
 
-# A Streamlit app for interacting with the langgraph agent via a simple chat interface.
-# The app has three main functions which are all run async:
-
-# - main() - sets up the streamlit app and high level structure
-# - draw_messages() - draws a set of chat messages
-
-# The app heavily uses AgentClient to interact with the agent's FastAPI endpoints.
-
-
 APP_TITLE = "CS6303: Foodpanda Chatbot"
 APP_ICON = "🐼"
 
