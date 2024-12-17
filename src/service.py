@@ -75,8 +75,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     rag_pipeline = init_customer_rag_pipeline()
 
     async with checkpointer() as memory:
-        chatbot = Chatbot(llm, rag_pipeline, db_tools, memory)
-        app.state.agent = chatbot.build_graph()
+        customer_chatbot = Chatbot(llm, rag_pipeline, db_tools, memory)
+        app.state.agent = customer_chatbot.build_graph()
         yield
 
 app = FastAPI(lifespan=lifespan)
@@ -162,7 +162,7 @@ def init(input: ChatHistoryInput):
         logger.error(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error")
 
-bot = EmployeeChatBot()
+employee_chatbot = EmployeeChatBot()
 
 class QueryRequest(BaseModel):
     query: str
@@ -173,7 +173,7 @@ class VerboseRequest(BaseModel):
 @app.post("/employee")
 async def employee_query(request: QueryRequest):
     print("the query is: ", request.query)  # Access the query from the request object
-    response = bot.generate(request.query)
+    response = employee_chatbot.generate(request.query)
     return {"response": response}
 
 @app.post("/employee/upload")
@@ -181,17 +181,17 @@ async def upload_document(file: UploadFile):
     temp_file_path = f"/tmp/{file.filename}"
     with open(temp_file_path, "wb") as temp_file:
         temp_file.write(await file.read())
-    bot.AddFileToDB([temp_file_path])
+    employee_chatbot.AddFileToDB([temp_file_path])
     return {"message": f"File {file.filename} uploaded successfully"}
 
 @app.post("/employee/changeVerbose")
 def change_verbose(request: VerboseRequest):
-    bot.verbose = request.verbose  # Set the verbose flag to the value sent in the request
-    return {"verbose": bot.verbose}
+    employee_chatbot.verbose = request.verbose  # Set the verbose flag to the value sent in the request
+    return {"verbose": employee_chatbot.verbose}
 
 @app.get("/employee/clearCache")
 def clear_cache():
-    bot.cache = []  # Clears the bot's cache
+    employee_chatbot.cache = []  # Clears the employee_chatbot's cache
     return {"message": "Cache cleared successfully"}
 
 app.include_router(router)
