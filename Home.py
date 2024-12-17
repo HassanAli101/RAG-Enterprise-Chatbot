@@ -1,5 +1,5 @@
 import streamlit as st
-from StreamlitFrontend import chatbot_page
+from Employee_Agent.StreamlitFrontend import chatbot_page
 
 # Set page configuration (only once, at the top of the main file)
 st.set_page_config(

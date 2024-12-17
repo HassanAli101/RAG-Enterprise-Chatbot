@@ -79,3 +79,6 @@ def chatbot_page():
         st.session_state.messages.append({"role": "assistant", "content": response})
         st.markdown(f"<div style='background-color: #2e2c2c; padding: 10px; border-radius: 5px; margin: 5px 0;'>{response}</div>", unsafe_allow_html=True)
 
+
+if __name__ == "__main__":
+    chatbot_page()
