@@ -25,6 +25,28 @@ with st.sidebar:
         else:
             st.error("There was an error uploading the file.")
 
+    # Verbose toggle button
+    st.subheader("🔧 Verbose Mode")
+    verbose = st.checkbox("Enable Verbose Mode", value=False)
+
+    # Send the verbose state to FastAPI server as a POST request
+    if verbose is not None:
+        response = requests.post("http://localhost:8000/employee/changeVerbose", json={"verbose": verbose})
+        if response.status_code == 200:
+            st.success(f"Verbose mode toggled to: {verbose}")
+        else:
+            st.error("Failed to toggle verbose mode.")
+
+    # Clear chat history checkbox
+    st.subheader("🧹 Clear Chat History")
+    clear_history = st.checkbox("Clear chat history", value=False)
+
+    if clear_history:
+        # Reset the messages in Streamlit session state
+        st.session_state.messages = []
+        # Send a request to the backend to clear the bot cache
+        requests.get("http://localhost:8000/employee/clearCache")  # Trigger cache clear
+
 # Function for generating LLM response
 def generate_response(input):
     response = requests.post("http://localhost:8000/employee", json={"query": input})
