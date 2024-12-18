@@ -81,7 +81,7 @@ class EmployeeChatBot:
         self.index = self.pc.Index(self.index_name) #Remember, i can do this because i have already once created this index, else create index first
         self.vector_store = PineconeVectorStore(index=self.index, embedding=self.embeddings)
         # generating variables
-        self.repo_id = "mistralai/Mixtral-8x7B-Instruct-v0.1" #tunable
+        self.repo_id = "mistralai/Mistral-7B-Instruct-v0.3" #tunable
         self.llm = HuggingFaceEndpoint( repo_id=self.repo_id, temperature= 1, top_k= 50, huggingfacehub_api_token=os.getenv('HUGGINGFACE_API_KEY') ) #tunable
         self.verbose = False #change this to see the explanations of how the LLM reached its conclusion
         #cache variables
@@ -372,6 +372,7 @@ class EmployeeChatBot:
     # TODO: To be implemented
     def generate(self, query):
       #Check Against Cache
+        # print("[IN EMPLOYEE CENTERED], query receiveD: ", query)
         for cached_query, cached_response in self.cache:
           if self.similar(cached_query, query) > 0.6:
               print("cache found, with: ", cached_query, " score: ", self.similar(cached_query, query))
@@ -389,7 +390,10 @@ class EmployeeChatBot:
           previous_questions = ""
         memory_query = "Previous_questions: \n" + previous_questions + "\nNew Question: \n" + query
         memory_response = self.memory_chain.invoke({"question": memory_query})
+        if not memory_response or memory_response.strip() == "":
+          memory_response = query
         query_response = "[VERBOSE] the augmented memory prompt is: " + memory_response + "\n" 
+        # print("[IN EMPLOYEE CENTERED], memory response is: ", memory_response)
 
       #Classiify whether General question or relevant to Organization.
         classifier_response = self.classifier_chain.invoke({"question": memory_response})
@@ -410,10 +414,14 @@ class EmployeeChatBot:
           relevant_docs = self.get_relevant_docs(memory_response)
           search_query = memory_response + " try to answer from " + relevant_docs
           retrieved_docs = self.format_docs_rerank(self.vector_store.similarity_search(search_query))
+          # print("[IN EMPLOYEE CENTERED], retrieved docs: : ", retrieved_docs)
           reranked_docs = self.rerank(memory_response, retrieved_docs)
           context = self.reformat_docs(reranked_docs)
           contextualised_query = "Context: \n" + context + "\n Question: \n" + memory_response
-          query_response += self.Employee_chain.invoke({"question": contextualised_query})
+          if self.verbose:
+            query_response += "[VERBOSE] Query classfieid as Relevant, \nYour Answer: "  + self.Employee_chain.invoke({"question": contextualised_query})
+          else:
+            query_response += self.Employee_chain.invoke({"question": contextualised_query})
         
       #Final GuardRailCheck if the answer actually answers the question (if needed) It is needed now, if hallucinations increase a lot, recommend to clean cache
         QA_pair = "Question: \n" + query + " \nAnswer: \n" + query_response
@@ -432,15 +440,14 @@ class EmployeeChatBot:
 
       #Check Against Verbose
         if self.verbose:
+          # print("[IN EMPLOYEE CENTERED], returning: ", query_response)
           return query_response
         else:
           match = re.search(r"\*\*Provide the answer\*\*: (.*?)(?:\n|$)", query_response)
+          # print("[IN EMPLOYEE CENTERED], returning: ", query_response)
           return match.group(1) if match else query_response
 
-    #Implement as per paper 1 with self generated text and break down of question into subsequent parts
-    def Augment_prompt(self, query):
-      pass
-
+    #Helper functions:
     def similar(self, a, b):
         return SequenceMatcher(None, a, b).ratio()
 
@@ -448,16 +455,11 @@ class EmployeeChatBot:
         responses = self.Cohere_client.rerank(
             query=query,
             documents=chunks,
-            top_n=len(chunks)  # Return scores for all chunks
+            top_n=len(chunks) 
         )
-
         # print("[IN RERANK] responses are: ", responses)
-
-        # Sort the chunks by their relevance scores
-        # Extract the indexes based on relevance score
         relevant_indexes = [item.index for item in responses.results]
-        # Return the chunks at the relevant indexes
-        return [chunks[i] for i in relevant_indexes][:2]
+        return [chunks[i] for i in relevant_indexes]
 
 
     # So this is what i had a theory about
@@ -473,9 +475,6 @@ class EmployeeChatBot:
         matches = [doc for doc in documents if doc in words]
         return ", ".join(matches[:2])
 
-
-
-    #Helper functions:
     def format_docs(self, docs):
         return "\n\n".join([d.page_content for d in docs])
 
